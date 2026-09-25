@@ -1,0 +1,75 @@
+name: Dich va Long Tieng Video AI
+
+on:
+  workflow_dispatch:
+    inputs:
+      voice_choice:
+        description: 'Chon giong doc tieng Viet'
+        required: true
+        default: 'vi-VN-HoaiMyNeural'
+        type: choice
+        options:
+        - 'vi-VN-HoaiMyNeural'
+        - 'vi-VN-NamMinhNeural'
+      input_file:
+        description: 'Ten file video/audio tieng Trung trong Repo (VD: video.mp4 hoac audio.mp3)'
+        required: true
+        default: 'video.mp4'
+
+jobs:
+  dubbing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lay ma nguon Repo
+        uses: actions/checkout@v4
+
+      - name: Cai dat Python va ffmpeg
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Cai dat cac thu vien ho tro
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install edge-tts openai-whisper googletrans==3.1.0a0
+
+      - name: Xu ly Nhan dien - Dich - Long tieng
+        run: |
+          python -c "
+          import os, whisper, subprocess
+          from googletrans import Translator
+
+          voice = '${{ github.event.inputs.voice_choice }}'
+          input_file = '${{ github.event.inputs.input_file }}'
+
+          print('1. Nhan dien giong noi tieng Trung qua Whisper...')
+          model = whisper.load_model('base')
+          result = model.transcribe(input_file, language='zh')
+          zh_text = result['text']
+          print('Van ban tieng Trung:', zh_text)
+
+          print('2. Dich sang tieng Viet...')
+          translator = Translator()
+          vi_text = translator.translate(zh_text, src='zh-cn', dest='vi').text
+          print('Van ban tieng Viet:', vi_text)
+
+          with open('sub_vi.txt', 'w', encoding='utf-8') as f:
+              f.write(vi_text)
+
+          print('3. Tao audio long tieng bang Edge-TTS...')
+          cmd = f'edge-tts --voice {voice} --file sub_vi.txt --write-media voice_vi.mp3'
+          subprocess.run(cmd, shell=True, check=True)
+
+          print('4. Ghep audio tieng Viet vao video/audio goc...')
+          output_cmd = f'ffmpeg -i {input_file} -i voice_vi.mp3 -c:v copy -map 0:v:0? -map 1:a:0 video_tieng_viet.mp4 -y'
+          subprocess.run(output_cmd, shell=True)
+          "
+
+      - name: Tai video/audio tieng Viet da long tieng ve
+        uses: actions/upload-artifact@v4
+        with:
+          name: ket-qua-long-tieng
+          path: |
+            video_tieng_viet.mp4
+            voice_vi.mp3
