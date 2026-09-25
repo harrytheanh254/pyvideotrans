@@ -35,6 +35,11 @@ jobs:
           pip install --upgrade pip
           pip install edge-tts openai-whisper googletrans==3.1.0a0
 
+      - name: Chuyen doi dinh dang & Preprocess Video
+        run: |
+          # Sửa lỗi moov atom/invalid data bằng cách convert sạch âm thanh ra file wav tiêu chuẩn
+          ffmpeg -i "${{ github.event.inputs.input_file }}" -ar 16000 -ac 1 -c:a pcm_s16le input_audio.wav -y
+
       - name: Xu ly Nhan dien - Dich - Long tieng
         run: |
           python -c "
@@ -44,9 +49,9 @@ jobs:
           voice = '${{ github.event.inputs.voice_choice }}'
           input_file = '${{ github.event.inputs.input_file }}'
 
-          print('1. Nhan dien giong noi tieng Trung...')
+          print('1. Nhan dien tieng Trung (CPU Mode)...')
           model = whisper.load_model('base')
-          result = model.transcribe(input_file, language='zh')
+          result = model.transcribe('input_audio.wav', language='zh', fp16=False)
           zh_text = result['text']
           print('Van ban tieng Trung:', zh_text)
 
@@ -63,7 +68,7 @@ jobs:
           subprocess.run(cmd, shell=True, check=True)
 
           print('4. Ghep audio tieng Viet vao video...')
-          output_cmd = f'ffmpeg -i {input_file} -i voice_vi.mp3 -c:v copy -map 0:v:0? -map 1:a:0 video_tieng_viet.mp4 -y'
+          output_cmd = f'ffmpeg -i \"{input_file}\" -i voice_vi.mp3 -c:v copy -map 0:v:0? -map 1:a:0 video_tieng_viet.mp4 -y'
           subprocess.run(output_cmd, shell=True)
           "
 
