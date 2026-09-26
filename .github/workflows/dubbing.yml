@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       input_file:
-        description: 'Ten file video/audio tieng Trung (VD: video.mp4)'
+        description: 'Ten file video trong Repo (VD: video.mp4)'
         required: true
         default: 'video.mp4'
       voice_choice:
@@ -28,54 +28,51 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Cai dat cac thu vien ho tro
+      - name: Cai dat thu vien
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           pip install --upgrade pip
           pip install edge-tts openai-whisper googletrans==3.1.0a0
 
-      - name: Chuyen doi dinh dang & Preprocess Video
+      - name: Tach am thanh va Xu ly
         run: |
-          # Sửa lỗi moov atom/invalid data bằng cách convert sạch âm thanh ra file wav tiêu chuẩn
-          ffmpeg -i "${{ github.event.inputs.input_file }}" -ar 16000 -ac 1 -c:a pcm_s16le input_audio.wav -y
+          # 1. Chuyển video thành audio wav 16kHz sạch để Whisper không bị lỗi
+          ffmpeg -i "${{ github.event.inputs.input_file }}" -vn -ar 16000 -ac 1 audio_clean.wav -y
 
-      - name: Xu ly Nhan dien - Dich - Long tieng
-        run: |
+          # 2. Chạy Python dịch thuật & lồng tiếng
           python -c "
-          import os, whisper, subprocess
+          import whisper, subprocess
           from googletrans import Translator
 
           voice = '${{ github.event.inputs.voice_choice }}'
           input_file = '${{ github.event.inputs.input_file }}'
 
-          print('1. Nhan dien tieng Trung (CPU Mode)...')
+          print('1. Nhan dien tieng Trung...')
           model = whisper.load_model('base')
-          result = model.transcribe('input_audio.wav', language='zh', fp16=False)
+          result = model.transcribe('audio_clean.wav', language='zh', fp16=False)
           zh_text = result['text']
-          print('Van ban tieng Trung:', zh_text)
 
           print('2. Dich sang tieng Viet...')
           translator = Translator()
           vi_text = translator.translate(zh_text, src='zh-cn', dest='vi').text
-          print('Van ban tieng Viet:', vi_text)
 
           with open('sub_vi.txt', 'w', encoding='utf-8') as f:
               f.write(vi_text)
 
-          print('3. Tao audio long tieng bang Edge-TTS...')
+          print('3. Tao giong doc Edge-TTS...')
           cmd = f'edge-tts --voice {voice} --file sub_vi.txt --write-media voice_vi.mp3'
           subprocess.run(cmd, shell=True, check=True)
 
-          print('4. Ghep audio tieng Viet vao video...')
+          print('4. Ghep audio tieng Viet vao video gốc...')
           output_cmd = f'ffmpeg -i \"{input_file}\" -i voice_vi.mp3 -c:v copy -map 0:v:0? -map 1:a:0 video_tieng_viet.mp4 -y'
           subprocess.run(output_cmd, shell=True)
           "
 
-      - name: Tai ket qua ve
+      - name: Tai ket qua ve máy
         uses: actions/upload-artifact@v4
         with:
-          name: video-long-tieng-viet
+          name: ket-qua-video-long-tieng
           path: |
             video_tieng_viet.mp4
             voice_vi.mp3
